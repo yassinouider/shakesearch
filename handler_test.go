@@ -47,7 +47,7 @@ func TestHandler_Search(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	handler := NewHandler(&s)
+	handler := NewHandler(&s, nil)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handler.Search)

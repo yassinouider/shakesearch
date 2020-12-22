@@ -10,18 +10,21 @@ import (
 	"strconv"
 	"strings"
 
+	"pulley.com/shakesearch/pkg/cacher"
 	"pulley.com/shakesearch/pkg/render"
 	"pulley.com/shakesearch/pkg/searcher"
 )
 
 func main() {
+	log.Println("new")
 	dat, err := ioutil.ReadFile("./data/completeworks.txt")
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	suffixarraySearcher := searcher.NewSuffixArraySearcher(dat)
-	handler := NewHandler(suffixarraySearcher)
+	inmemoryCacher := cacher.NewInMemoryCacher()
+	handler := NewHandler(suffixarraySearcher, inmemoryCacher)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -43,12 +46,14 @@ func main() {
 type Handler struct {
 	Searcher searcher.Searcher
 	Render   render.Render
+	Cacher   cacher.Cacher
 }
 
-func NewHandler(s searcher.Searcher) *Handler {
+func NewHandler(s searcher.Searcher, c cacher.Cacher) *Handler {
 	return &Handler{
 		Searcher: s,
 		Render:   render.NewJsonRender(),
+		Cacher:   c,
 	}
 }
 
@@ -60,6 +65,14 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.Render.Error(w, http.StatusMethodNotAllowed, http.StatusText(http.StatusMethodNotAllowed))
 		return
+	}
+
+	if h.Cacher != nil {
+		if cached, err := h.Cacher.Get(r.RequestURI); err == nil {
+			log.Printf("content from cache for %s\n", r.RequestURI)
+			h.Render.Success(w, cached)
+			return
+		}
 	}
 
 	searchRequest := SearchRequest{}
@@ -82,6 +95,10 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.Render.Error(w, http.StatusBadRequest, err)
 		return
+	}
+
+	if h.Cacher != nil {
+		h.Cacher.Set(r.RequestURI, *res)
 	}
 
 	h.Render.Success(w, res)
